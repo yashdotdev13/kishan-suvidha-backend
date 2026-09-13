@@ -1,10 +1,14 @@
 package com.SmartIndiaHackathon.kishan_suvidha_backend.logistics.service;
 
+import com.SmartIndiaHackathon.kishan_suvidha_backend.auth.entity.Buyer;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.common.exceptions.BadRequestException;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.common.exceptions.ResourceNotFoundException;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.logistics.dtos.TransportCostEstimateResponse;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.logistics.entity.TransportOption;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.logistics.enums.TransportRouteType;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.logistics.repository.TransportOptionRepository;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.marketplace.entity.Offer;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.marketplace.repository.OfferRepository;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.entity.ProcurementCentre;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.repository.ProcurementCentreRepository;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.auth.entity.Farmer;
@@ -24,6 +28,7 @@ public class TransportCostService {
     private final ProcurementCentreRepository procurementCentreRepository;
     private final TransportOptionRepository transportOptionRepository;
     private final DistanceService distanceService;
+    private final OfferRepository offerRepository;
 
     @Transactional(readOnly = true)
     public TransportCostEstimateResponse estimateToProcurementCentre(
@@ -106,9 +111,89 @@ public class TransportCostService {
                 .setScale(2, RoundingMode.HALF_UP);
 
         return new TransportCostEstimateResponse(
+                TransportRouteType.PROCUREMENT_CENTRE,
                 centre.getId(),
                 transportOption.getId(),
                 quantity,
+                distanceKm,
+                transportOption.getRatePerKmPerQuintal(),
+                transportCost
+        );
+    }
+
+
+    @Transactional(readOnly = true)
+    public TransportCostEstimateResponse estimateForMarketplaceOffer(
+            Long userId,
+            Long offerId,
+            Long transportOptionId
+    ) {
+        Farmer farmer = farmerRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Farmer profile not found"));
+
+        Offer offer = offerRepository.findById(offerId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Offer not found"));
+
+        if (!offer.getCrop().getFarmer().getId().equals(farmer.getId())) {
+            throw new BadRequestException(
+                    "You can only estimate transport cost for offers received for your crops"
+            );
+        }
+
+        Buyer buyer = offer.getBuyer();
+
+        if (farmer.getLatitude() == null || farmer.getLongitude() == null) {
+            throw new BadRequestException(
+                    "Farmer location coordinates are not available"
+            );
+        }
+
+        if (buyer.getLatitude() == null || buyer.getLongitude() == null) {
+            throw new BadRequestException(
+                    "Buyer location coordinates are not available"
+            );
+        }
+
+        TransportOption transportOption = transportOptionRepository
+                .findById(transportOptionId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Transport option not found"
+                        ));
+
+        if (!transportOption.getAvailable()) {
+            throw new BadRequestException(
+                    "Transport option is not currently available"
+            );
+        }
+
+        if (transportOption.getCapacityQuintals()
+                .compareTo(offer.getQuantity()) < 0) {
+
+            throw new BadRequestException(
+                    "Transport capacity is insufficient for this offer quantity"
+            );
+        }
+
+        BigDecimal distanceKm = distanceService.calculateDistanceKm(
+                farmer.getLatitude(),
+                farmer.getLongitude(),
+                buyer.getLatitude(),
+                buyer.getLongitude()
+        );
+
+        BigDecimal transportCost = distanceKm
+                .multiply(transportOption.getRatePerKmPerQuintal())
+                .multiply(offer.getQuantity())
+                .setScale(2, RoundingMode.HALF_UP);
+
+        return new TransportCostEstimateResponse(
+                TransportRouteType.MARKETPLACE_BUYER,
+                buyer.getId(),
+                transportOption.getId(),
+                offer.getQuantity(),
                 distanceKm,
                 transportOption.getRatePerKmPerQuintal(),
                 transportCost

@@ -52,4 +52,37 @@ public class LogisticsTools {
                         quantityQuintals
                 );
     }
+
+    @Tool(description = """
+        Estimate the transport cost for an offer received by the
+        authenticated farmer.
+
+        Use this when comparing a marketplace offer with another
+        selling option. The transport cost is calculated from the
+        farmer's location to the buyer's location using the selected
+        available transport option.
+
+        Only use this for offers belonging to the authenticated farmer.
+        """)
+    public TransportCostEstimateResponse estimateMarketplaceTransportCost(
+            Long offerId,
+            Long transportOptionId,
+            ToolContext toolContext
+    ) {
+        Object userIdValue = toolContext.getContext().get("userId");
+
+        if (userIdValue == null) {
+            throw new IllegalStateException(
+                    "Authenticated user ID is missing"
+            );
+        }
+
+        Long userId = ((Number) userIdValue).longValue();
+
+        return transportCostService.estimateForMarketplaceOffer(
+                userId,
+                offerId,
+                transportOptionId
+        );
+    }
 }
