@@ -23,123 +23,69 @@ public class OfferController {
 
     @PostMapping
     @PreAuthorize("hasRole('BUYER')")
-    public ResponseEntity<OfferResponse> createOffer(
-            @Valid @RequestBody CreateOfferRequest request,
-            Authentication authentication
-    ) {
-
+    public ResponseEntity<OfferResponse> createOffer(@Valid @RequestBody CreateOfferRequest request, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.createOffer(userId, request);
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(response);
+        OfferResponse response = offerService.createOffer(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/received")
     @PreAuthorize("hasRole('FARMER')")
-    public ResponseEntity<List<OfferResponse>> getMyReceivedOffers(
-            Authentication authentication
-    ) {
+    public ResponseEntity<List<OfferResponse>> getMyReceivedOffers(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        return ResponseEntity.ok(
-                offerService.getMyReceivedOffers(userId)
-        );
+        return ResponseEntity.ok(offerService.getMyReceivedOffers(userId));
     }
 
 
     @PostMapping("/{offerId}/accept")
     @PreAuthorize("hasRole('FARMER')")
-    public ResponseEntity<OfferResponse> acceptOffer(
-            @PathVariable Long offerId,
-            Authentication authentication
-    ) {
+    public ResponseEntity<OfferResponse> acceptOffer(@PathVariable Long offerId, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.acceptOffer(userId, offerId);
-
+        OfferResponse response = offerService.acceptOffer(userId, offerId);
         return ResponseEntity.ok(response);
     }
 
 
     @PostMapping("/{offerId}/reject")
     @PreAuthorize("hasRole('FARMER')")
-    public ResponseEntity<OfferResponse> rejectOffer(
-            @PathVariable Long offerId,
-            Authentication authentication
-    ) {
+    public ResponseEntity<OfferResponse> rejectOffer(@PathVariable Long offerId, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.rejectOffer(userId, offerId);
-
+        OfferResponse response = offerService.rejectOffer(userId, offerId);
         return ResponseEntity.ok(response);
     }
 
 
     @PostMapping("/{offerId}/counter")
     @PreAuthorize("hasRole('FARMER')")
-    public ResponseEntity<OfferResponse> counterOffer(
-            @PathVariable Long offerId,
-            @Valid @RequestBody CounterOfferRequest request,
-            Authentication authentication
-    ) {
+    public ResponseEntity<OfferResponse> counterOffer(@PathVariable Long offerId, @Valid @RequestBody CounterOfferRequest request, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.counterOffer(
-                        userId,
-                        offerId,
-                        request
-                );
-
+        OfferResponse response = offerService.counterOffer(userId, offerId, request);
         return ResponseEntity.ok(response);
     }
 
 
     @GetMapping("/my")
     @PreAuthorize("hasRole('BUYER')")
-    public ResponseEntity<List<OfferResponse>> getMyOffers(
-            Authentication authentication
-    ) {
+    public ResponseEntity<List<OfferResponse>> getMyOffers(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        return ResponseEntity.ok(
-                offerService.getMyOffers(userId)
-        );
+        return ResponseEntity.ok(offerService.getMyOffers(userId));
     }
 
 
     @PostMapping("/{offerId}/accept-counter")
     @PreAuthorize("hasRole('BUYER')")
-    public ResponseEntity<OfferResponse> acceptCounterOffer(
-            @PathVariable Long offerId,
-            Authentication authentication
-    ) {
+    public ResponseEntity<OfferResponse> acceptCounterOffer(@PathVariable Long offerId, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.acceptCounterOffer(userId, offerId);
-
+        OfferResponse response = offerService.acceptCounterOffer(userId, offerId);
         return ResponseEntity.ok(response);
     }
 
 
     @PostMapping("/{offerId}/reject-counter")
     @PreAuthorize("hasRole('BUYER')")
-    public ResponseEntity<OfferResponse> rejectCounterOffer(
-            @PathVariable Long offerId,
-            Authentication authentication
-    ) {
+    public ResponseEntity<OfferResponse> rejectCounterOffer(@PathVariable Long offerId, Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
-
-        OfferResponse response =
-                offerService.rejectCounterOffer(userId, offerId);
-
+        OfferResponse response = offerService.rejectCounterOffer(userId, offerId);
         return ResponseEntity.ok(response);
     }
 }

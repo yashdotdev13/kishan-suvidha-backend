@@ -21,32 +21,19 @@ public class TransportOptionController {
 
     @PostMapping
     @PreAuthorize("hasRole('OFFICER')")
-    public ResponseEntity<TransportOptionResponse> create(
-            @Valid @RequestBody CreateTransportOptionRequest request
-    ) {
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(transportOptionService.create(request));
+    public ResponseEntity<TransportOptionResponse> create(@Valid @RequestBody CreateTransportOptionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(transportOptionService.create(request));
     }
 
     @GetMapping("/available")
     @PreAuthorize("hasAnyRole('FARMER', 'BUYER', 'OFFICER')")
     public ResponseEntity<List<TransportOptionResponse>> getAvailable() {
-
-        return ResponseEntity.ok(
-                transportOptionService.getAvailable()
-        );
+        return ResponseEntity.ok(transportOptionService.getAvailable());
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('FARMER', 'BUYER', 'OFFICER')")
-    public ResponseEntity<TransportOptionResponse> getById(
-            @PathVariable Long id
-    ) {
-
-        return ResponseEntity.ok(
-                transportOptionService.getById(id)
-        );
+    public ResponseEntity<TransportOptionResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(transportOptionService.getById(id));
     }
 }

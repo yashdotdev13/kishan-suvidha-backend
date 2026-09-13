@@ -36,47 +36,34 @@ public class AuthService {
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-
-        // 1. Check duplicate email
         if (userRepository.existsByEmail(request.email())) {
             throw new UserAlreadyExistsException("User with this email already exists");
         }
 
-        // 2. Check duplicate phone
         if (userRepository.existsByPhone(request.phone())) {
             throw new UserAlreadyExistsException("User with this phone number already exists");
         }
 
-        // 3. Validate role-specific data
         validateRoleSpecificData(request);
 
-        // 4. Create User
-        User user = User.builder().email(request.email()).phone(request.phone())
-                .password(passwordEncoder.encode(request.password())).role(request.role()).enabled(true).build();
+        User user = User.builder().email(request.email()).phone(request.phone()).password(passwordEncoder.encode(request.password())).role(request.role()).enabled(true).build();
         user = userRepository.save(user);
 
-        // 5. Create role-specific profile
         createProfile(request, user);
-        // 6. Return response
         return new RegisterResponse(user.getId(), user.getEmail(), user.getPhone(), user.getRole(), "Registration successful");
     }
 
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
-        // 1. Find user by email
         User user = userRepository.findByEmail(request.email()).orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
 
-        // 2. Check whether the account is enabled
         if (!user.isEnabled()) {
             throw new InvalidCredentialsException("User account is disabled");
         }
-        // 3. Verify password
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        // 4. Generate JWT
         String token = jwtService.generateToken(user);
-        // 5. Return login response
         return new LoginResponse(token, "Bearer", user.getId(), user.getEmail(), user.getRole());
     }
 
@@ -115,6 +102,7 @@ public class AuthService {
             }
         }
     }
+
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }

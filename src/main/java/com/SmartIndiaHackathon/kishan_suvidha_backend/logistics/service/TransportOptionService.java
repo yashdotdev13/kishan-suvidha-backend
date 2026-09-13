@@ -18,63 +18,32 @@ public class TransportOptionService {
     private final TransportOptionRepository transportOptionRepository;
 
     @Transactional
-    public TransportOptionResponse create(
-            CreateTransportOptionRequest request
-    ) {
+    public TransportOptionResponse create(CreateTransportOptionRequest request) {
 
-        TransportOption transportOption =
-                TransportOption.builder()
-                        .vehicleType(request.vehicleType())
-                        .vehicleNumber(request.vehicleNumber())
-                        .capacityQuintals(request.capacityQuintals())
-                        .ratePerKmPerQuintal(
-                                request.ratePerKmPerQuintal()
-                        )
-                        .available(true)
-                        .build();
+        TransportOption transportOption = TransportOption.builder().vehicleType(request.vehicleType())
+                .vehicleNumber(request.vehicleNumber()).capacityQuintals(request
+                        .capacityQuintals()).ratePerKmPerQuintal(request.ratePerKmPerQuintal()).available(true).build();
 
-        TransportOption saved =
-                transportOptionRepository.save(transportOption);
-
+        TransportOption saved = transportOptionRepository.save(transportOption);
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public List<TransportOptionResponse> getAvailable() {
-
-        return transportOptionRepository
-                .findByAvailableTrue()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return transportOptionRepository.findByAvailableTrue().stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public TransportOptionResponse getById(Long id) {
-
-        TransportOption transportOption =
-                transportOptionRepository.findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Transport option not found"
-                                ));
-
+        TransportOption transportOption = transportOptionRepository.findById(id).orElseThrow(() ->
+                new ResourceNotFoundException("Transport option not found"));
         return toResponse(transportOption);
     }
 
-    private TransportOptionResponse toResponse(
-            TransportOption transportOption
-    ) {
-
-        return new TransportOptionResponse(
-                transportOption.getId(),
-                transportOption.getVehicleType(),
-                transportOption.getVehicleNumber(),
-                transportOption.getCapacityQuintals(),
-                transportOption.getRatePerKmPerQuintal(),
-                transportOption.getAvailable(),
-                transportOption.getCreatedAt(),
-                transportOption.getUpdatedAt()
-        );
+    private TransportOptionResponse toResponse(TransportOption transportOption) {
+        return new TransportOptionResponse(transportOption.getId(), transportOption.getVehicleType(),
+                transportOption.getVehicleNumber(), transportOption.getCapacityQuintals(),
+                transportOption.getRatePerKmPerQuintal(), transportOption.getAvailable(),
+                transportOption.getCreatedAt(), transportOption.getUpdatedAt());
     }
 }

@@ -81,118 +81,95 @@ public class TransactionService {
         }
 
         BigDecimal grossAmount = agreedPrice.multiply(quantity);
-
         BigDecimal transportCost = BigDecimal.ZERO;
-
         BigDecimal netAmount = grossAmount.subtract(transportCost);
 
-        Transaction transaction = Transaction.builder().offer(offer).crop(crop).farmer(crop.getFarmer()).buyer(buyer).quantity(quantity).agreedPrice(agreedPrice).grossAmount(grossAmount).transportCost(transportCost).netAmount(netAmount).status(TransactionStatus.OFFER_ACCEPTED).build();
+        Transaction transaction = Transaction.builder().offer(offer).crop(crop).farmer(crop.
+                getFarmer()).buyer(buyer).quantity(quantity).agreedPrice(agreedPrice).
+                grossAmount(grossAmount).transportCost(transportCost).netAmount(netAmount).
+                status(TransactionStatus.OFFER_ACCEPTED).build();
 
         Transaction savedTransaction = transactionRepository.save(transaction);
 
-        /*
-         * Allocate the quantity from the crop.
-         */
         BigDecimal remainingQuantity = crop.getQuantity().subtract(quantity);
-
         crop.setQuantity(remainingQuantity);
-
-        /*
-         * If nothing remains, the crop is no longer available.
-         * Otherwise it remains available for another sale.
-         */
         if (remainingQuantity.compareTo(BigDecimal.ZERO) == 0) {
             crop.setStatus(CropStatus.SOLD);
         }
 
         cropRepository.save(crop);
-
         return toResponse(savedTransaction);
     }
 
     @Transactional(readOnly = true)
     public List<TransactionResponse> getMyTransactions(Long userId) {
 
-        Buyer buyer = buyerRepository.findByUserId(userId).orElseThrow(() -> new ResourceNotFoundException("Buyer profile not found"));
-
-        return transactionRepository.findByBuyerIdOrderByCreatedAtDesc(buyer.getId()).stream().map(this::toResponse).toList();
+        Buyer buyer = buyerRepository.findByUserId(userId).orElseThrow(() ->
+                new ResourceNotFoundException("Buyer profile not found"));
+        return transactionRepository.findByBuyerIdOrderByCreatedAtDesc(buyer
+                .getId()).stream().map(this::toResponse).toList();
     }
 
 
     @Transactional(readOnly = true)
     public List<TransactionResponse> getMySales(Long userId) {
 
-        Farmer farmer = farmerRepository.findByUserId(userId).orElseThrow(() -> new ResourceNotFoundException("Farmer profile not found"));
-
-        return transactionRepository.findByFarmerIdOrderByCreatedAtDesc(farmer.getId()).stream().map(this::toResponse).toList();
+        Farmer farmer = farmerRepository.findByUserId(userId).orElseThrow(() ->
+                new ResourceNotFoundException("Farmer profile not found"));
+        return transactionRepository.findByFarmerIdOrderByCreatedAtDesc(farmer.getId()).
+                stream().map(this::toResponse).toList();
     }
 
 
     @Transactional
     public TransactionResponse assignTransport(Long userId, Long transactionId, AssignTransportRequest request) {
 
-        Transaction transaction = transactionRepository.findByIdForUpdate(transactionId).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+        Transaction transaction = transactionRepository.findByIdForUpdate(transactionId).orElseThrow(() ->
+                new ResourceNotFoundException("Transaction not found"));
 
-        // Check that the transaction is still waiting for transport
         if (transaction.getStatus() != TransactionStatus.OFFER_ACCEPTED) {
             throw new BadRequestException("Transport can only be assigned when transaction status is OFFER_ACCEPTED");
         }
 
-        // Check that the authenticated user is involved in this transaction
         boolean isBuyer = transaction.getBuyer().getUser().getId().equals(userId);
 
         boolean isFarmer = transaction.getFarmer().getUser().getId().equals(userId);
 
-        // For now, officer handling will be added separately
-        // if you keep hasAnyRole(FARMER, BUYER, OFFICER).
         if (!isBuyer && !isFarmer) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "You are not authorized to assign transport for this transaction");
         }
-
         TransportOption transportOption = transportOptionRepository.findByIdForUpdate(request.transportOptionId()).orElseThrow(() -> new ResourceNotFoundException("Transport option not found"));
-
-        // Vehicle must be available
         if (!transportOption.getAvailable()) {
             throw new ConflictException(ErrorCode.CONFLICT, "Transport option is already assigned");
         }
 
-        // Vehicle capacity must be enough
         if (transportOption.getCapacityQuintals().compareTo(transaction.getQuantity()) < 0) {
 
             throw new BadRequestException("Transport capacity is insufficient for this transaction");
         }
-
-        // Farmer location must exist
         Farmer farmer = transaction.getFarmer();
 
         if (farmer.getLatitude() == null || farmer.getLongitude() == null) {
             throw new BadRequestException("Farmer location coordinates are not available");
         }
-
-        // Buyer location must exist
         Buyer buyer = transaction.getBuyer();
 
         if (buyer.getLatitude() == null || buyer.getLongitude() == null) {
             throw new BadRequestException("Buyer location coordinates are not available");
         }
+        BigDecimal distanceKm = distanceService.calculateDistanceKm(farmer.getLatitude(),
+                farmer.getLongitude(), buyer.getLatitude(), buyer.getLongitude());
+        BigDecimal transportCost = distanceKm.multiply(transportOption.getRatePerKmPerQuintal()).
+                multiply(transaction.getQuantity()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netAmount = transaction.getGrossAmount().subtract(transportCost).
+                setScale(2, RoundingMode.HALF_UP);
 
-        // Calculate distance
-        BigDecimal distanceKm = distanceService.calculateDistanceKm(farmer.getLatitude(), farmer.getLongitude(), buyer.getLatitude(), buyer.getLongitude());
-
-        // Calculate transport cost
-        BigDecimal transportCost = distanceKm.multiply(transportOption.getRatePerKmPerQuintal()).multiply(transaction.getQuantity()).setScale(2, RoundingMode.HALF_UP);
-
-        // Calculate net amount
-        BigDecimal netAmount = transaction.getGrossAmount().subtract(transportCost).setScale(2, RoundingMode.HALF_UP);
-
-        // Update transaction
         transaction.setTransportOption(transportOption);
         transaction.setDistanceKm(distanceKm);
         transaction.setTransportCost(transportCost);
         transaction.setNetAmount(netAmount);
         transaction.setStatus(TransactionStatus.TRANSPORT_ASSIGNED);
 
-        // Vehicle is no longer available
         transportOption.setAvailable(false);
 
         transactionRepository.save(transaction);
@@ -203,49 +180,19 @@ public class TransactionService {
 
 
     @Transactional
-    public TransactionResponse schedulePickup(
-            Long userId,
-            Long transactionId,
-            SchedulePickupRequest request
-    ) {
+    public TransactionResponse schedulePickup(Long userId, Long transactionId, SchedulePickupRequest request) {
 
-        // 1. Lock transaction
-        Transaction transaction =
-                transactionRepository.findByIdForUpdate(transactionId)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        ErrorCode.RESOURCE_NOT_FOUND,
-                                        "Transaction not found"
-                                )
-                        );
+        Transaction transaction = transactionRepository.findByIdForUpdate(transactionId).orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND, "Transaction not found"));
 
-        // 2. Pickup can only be scheduled after transport assignment
         if (transaction.getStatus() != TransactionStatus.TRANSPORT_ASSIGNED) {
-            throw new BadRequestException(
-                    ErrorCode.BAD_REQUEST,
-                    "Pickup can only be scheduled after transport has been assigned"
-            );
+            throw new BadRequestException(ErrorCode.BAD_REQUEST, "Pickup can only be scheduled after transport has been assigned");
         }
-
-        // 3. Validate pickup time
         if (request.pickupScheduledAt().isBefore(LocalDateTime.now())) {
-            throw new BadRequestException(
-                    ErrorCode.BAD_REQUEST,
-                    "Pickup date and time must be in the future"
-            );
+            throw new BadRequestException(ErrorCode.BAD_REQUEST, "Pickup date and time must be in the future");
         }
+        transaction.setPickupScheduledAt(request.pickupScheduledAt());
 
-        // 4. Save pickup schedule
-        transaction.setPickupScheduledAt(
-                request.pickupScheduledAt()
-        );
-
-        // 5. Move transaction to next stage
-        transaction.setStatus(
-                TransactionStatus.PICKUP_SCHEDULED
-        );
-
-        // 6. Save transaction
+        transaction.setStatus(TransactionStatus.PICKUP_SCHEDULED);
         transactionRepository.save(transaction);
 
         return toResponse(transaction);
@@ -253,73 +200,29 @@ public class TransactionService {
 
 
     @Transactional
-    public TransactionResponse markDelivered(
-            Long userId,
-            Long transactionId
-    ) {
+    public TransactionResponse markDelivered(Long userId, Long transactionId) {
 
-        // Lock the transaction
-        Transaction transaction =
-                transactionRepository.findByIdForUpdate(transactionId)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        ErrorCode.RESOURCE_NOT_FOUND,
-                                        "Transaction not found"
-                                )
-                        );
+        Transaction transaction = transactionRepository.findByIdForUpdate(transactionId).orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND, "Transaction not found"));
 
-        // Delivery can only happen after pickup has been scheduled
         if (transaction.getStatus() != TransactionStatus.PICKUP_SCHEDULED) {
-            throw new BadRequestException(
-                    ErrorCode.BAD_REQUEST,
-                    "Crop can only be marked as delivered after pickup has been scheduled"
-            );
+            throw new BadRequestException(ErrorCode.BAD_REQUEST, "Crop can only be marked as delivered after pickup has been scheduled");
         }
-
-        // Update transaction status
-        transaction.setStatus(
-                TransactionStatus.CROP_DELIVERED
-        );
-
+        transaction.setStatus(TransactionStatus.CROP_DELIVERED);
         transactionRepository.save(transaction);
-
         return toResponse(transaction);
     }
 
     private TransactionResponse toResponse(Transaction transaction) {
 
-        return new TransactionResponse(
-                transaction.getId(),
-                transaction.getOffer().getId(),
-                transaction.getCrop().getId(),
-                transaction.getCrop().getCropName(),
-                transaction.getFarmer().getId(),
-                transaction.getBuyer().getId(),
+        return new TransactionResponse(transaction.getId(), transaction.getOffer().getId(), transaction.getCrop().getId(), transaction.getCrop().getCropName(), transaction.getFarmer().getId(), transaction.getBuyer().getId(),
 
-                transaction.getTransportOption() != null
-                        ? transaction.getTransportOption().getId()
-                        : null,
-
-                transaction.getTransportOption() != null
-                        ? transaction.getTransportOption().getVehicleNumber()
-                        : null,
-
-                transaction.getQuantity(),
-                transaction.getAgreedPrice(),
-                transaction.getGrossAmount(),
-
-                transaction.getDistanceKm(),
-                transaction.getTransportCost(),
-                transaction.getNetAmount(),
-
+                transaction.getTransportOption() != null ? transaction.getTransportOption().getId() : null,
+                transaction.getTransportOption() != null ? transaction.getTransportOption().getVehicleNumber() : null,
+                transaction.getQuantity(), transaction.getAgreedPrice(), transaction.getGrossAmount(),
+                transaction.getDistanceKm(), transaction.getTransportCost(), transaction.getNetAmount(),
                 transaction.getStatus(),
-
                 transaction.getPickupScheduledAt(),
-
-                transaction.getCreatedAt(),
-                transaction.getUpdatedAt(),
-                transaction.getCompletedAt(),
-                transaction.getCancelledAt()
-        );
+                transaction.getCreatedAt(), transaction.getUpdatedAt(), transaction.getCompletedAt(),
+                transaction.getCancelledAt());
     }
 }

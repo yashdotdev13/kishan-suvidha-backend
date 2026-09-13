@@ -21,19 +21,12 @@ public class LocationService {
     private final GeocodingService geocodingService;
 
     @Transactional
-    public void updateFarmerLocation(
-            Long userId,
-            String location
-    ) {
+    public void updateFarmerLocation(Long userId, String location) {
 
-        Farmer farmer = farmerRepository.findByUserId(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Farmer profile not found"
-                        ));
+        Farmer farmer = farmerRepository.findByUserId(userId).orElseThrow(() ->
+                new ResourceNotFoundException("Farmer profile not found"));
 
-        Coordinates coordinates =
-                geocodingService.geocode(location);
+        Coordinates coordinates = geocodingService.geocode(location);
 
         farmer.setLocation(location);
         farmer.setLatitude(coordinates.latitude());
@@ -43,19 +36,12 @@ public class LocationService {
     }
 
     @Transactional
-    public void updateBuyerLocation(
-            Long userId,
-            String location
-    ) {
+    public void updateBuyerLocation(Long userId, String location) {
 
-        Buyer buyer = buyerRepository.findByUserId(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Buyer profile not found"
-                        ));
+        Buyer buyer = buyerRepository.findByUserId(userId).orElseThrow(() ->
+                new ResourceNotFoundException("Buyer profile not found"));
 
-        Coordinates coordinates =
-                geocodingService.geocode(location);
+        Coordinates coordinates = geocodingService.geocode(location);
 
         buyer.setLocation(location);
         buyer.setLatitude(coordinates.latitude());
