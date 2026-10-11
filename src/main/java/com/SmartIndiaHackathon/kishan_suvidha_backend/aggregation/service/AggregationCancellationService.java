@@ -1,3 +1,4 @@
+
 package com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.entity.Crop;
@@ -22,6 +23,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AggregationCancellationService {
 
+    private static final BigDecimal KG_PER_QUINTAL = BigDecimal.valueOf(100);
+    private static final BigDecimal KG_PER_TON = BigDecimal.valueOf(1000);
+
     private final AggregationPlanRepository planRepository;
     private final AggregationContributionRepository contributionRepository;
     private final CropRepository cropRepository;
@@ -39,13 +43,20 @@ public class AggregationCancellationService {
                     "This plan cannot be cancelled");
         }
 
-        if (plan.getStatus() == AggregationPlanStatus.RESERVED
-                || plan.getStatus() == AggregationPlanStatus.PARTIALLY_FULFILLED) {
-            releaseReservations(planId);
-        }
-
         List<AggregationContribution> contributions =
                 contributionRepository.findByPlanIdOrderByIdAsc(planId);
+
+        boolean hasFulfilledContribution = contributions.stream()
+                .anyMatch(c -> c.getStatus()
+                        == AggregationContributionStatus.FULFILLED);
+
+        if (hasFulfilledContribution) {
+            throw new IllegalStateException(
+                    "A plan containing fulfilled contributions cannot be cancelled");
+        }
+
+        // Restore reserved stock before marking the plan cancelled.
+        restoreReservedStock(plan, contributions);
 
         for (AggregationContribution contribution : contributions) {
             if (contribution.getStatus()
@@ -57,34 +68,48 @@ public class AggregationCancellationService {
 
         plan.setStatus(AggregationPlanStatus.CANCELLED);
 
+        contributionRepository.saveAll(contributions);
         return planRepository.save(plan);
     }
 
-    @Transactional
-    public void releaseReservations(Long planId) {
-        AggregationPlan plan = planRepository.findById(planId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException("Aggregation plan not found"));
+    private void restoreReservedStock(
+            AggregationPlan plan,
+            List<AggregationContribution> contributions) {
 
-        List<AggregationContribution> contributions =
-                contributionRepository.findByPlanIdOrderByIdAsc(planId)
-                        .stream()
+        if (plan.getStatus() != AggregationPlanStatus.RESERVED
+                && plan.getStatus()
+                != AggregationPlanStatus.PARTIALLY_FULFILLED) {
+            return;
+        }
+
+        List<AggregationContribution> reservedContributions =
+                contributions.stream()
                         .filter(c -> c.getStatus()
                                 == AggregationContributionStatus.RESERVED)
                         .sorted(Comparator.comparing(
                                 c -> c.getCrop().getId()))
                         .toList();
 
-        for (AggregationContribution contribution : contributions) {
+        for (AggregationContribution contribution : reservedContributions) {
+            BigDecimal reservedKg = contribution.getReservedQuantityKg();
+
+            if (reservedKg == null || reservedKg.signum() <= 0) {
+                throw new IllegalStateException(
+                        "Invalid reserved quantity for contribution "
+                                + contribution.getId());
+            }
+
             Crop crop = cropRepository.findByIdForUpdate(
                             contribution.getCrop().getId())
                     .orElseThrow(() ->
                             new IllegalArgumentException("Crop listing not found"));
 
-            BigDecimal reservedKg = contribution.getReservedQuantityKg();
-
-            if (reservedKg == null || reservedKg.signum() <= 0) {
-                continue;
+            // Never reactivate a sold or cancelled crop listing.
+            if (crop.getStatus() == CropStatus.SOLD
+                    || crop.getStatus() == CropStatus.CANCELLED) {
+                throw new IllegalStateException(
+                        "Cannot restore stock to a sold or cancelled crop listing: "
+                                + crop.getId());
             }
 
             BigDecimal currentKg = quantityConverter.toKilograms(
@@ -93,12 +118,21 @@ public class AggregationCancellationService {
             BigDecimal restoredKg = currentKg.add(reservedKg);
 
             BigDecimal restoredOriginalUnit = switch (crop.getUnit()) {
-                case KG -> restoredKg;
+                case KG -> restoredKg.setScale(3, RoundingMode.UNNECESSARY);
                 case QUINTAL -> restoredKg.divide(
-                        BigDecimal.valueOf(100), 3, RoundingMode.HALF_UP);
+                        KG_PER_QUINTAL, 3, RoundingMode.UNNECESSARY);
                 case TON -> restoredKg.divide(
-                        BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP);
+                        KG_PER_TON, 3, RoundingMode.UNNECESSARY);
             };
+
+            BigDecimal verifiedRestoredKg = quantityConverter.toKilograms(
+                    restoredOriginalUnit, crop.getUnit());
+
+            if (verifiedRestoredKg.compareTo(restoredKg) != 0) {
+                throw new IllegalStateException(
+                        "Restoring this reservation would lose quantity precision "
+                                + "for crop " + crop.getId());
+            }
 
             crop.setQuantity(restoredOriginalUnit);
 
@@ -106,15 +140,10 @@ public class AggregationCancellationService {
                 crop.setStatus(CropStatus.AVAILABLE);
             }
 
+            // Clearing the reservation makes it impossible for a subsequent
+            // cancellation to restore the same contribution a second time.
             contribution.setReservedQuantityKg(BigDecimal.ZERO);
             contribution.setStatus(AggregationContributionStatus.RELEASED);
-        }
-
-        contributionRepository.saveAll(contributions);
-
-        if (plan.getStatus() != AggregationPlanStatus.CANCELLED) {
-            plan.setStatus(AggregationPlanStatus.CANCELLED);
-            planRepository.save(plan);
         }
     }
 }

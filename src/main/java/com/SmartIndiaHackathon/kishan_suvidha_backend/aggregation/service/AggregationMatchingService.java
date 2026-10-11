@@ -1,3 +1,4 @@
+
 package com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.entity.Crop;
@@ -22,6 +23,8 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -42,11 +45,21 @@ public class AggregationMatchingService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("Aggregation demand not found"));
 
-        if (demand.getStatus() != AggregationDemandStatus.OPEN
-                && demand.getStatus() != AggregationDemandStatus.PLAN_PROPOSED) {
+        if (demand.getStatus() != AggregationDemandStatus.OPEN) {
             throw new IllegalStateException(
-                    "A plan cannot be generated for a demand in status "
-                            + demand.getStatus());
+                    "A new plan can only be generated for an OPEN demand");
+        }
+
+        // Defensive duplicate-plan check.
+        List<AggregationPlan> existingPlans =
+                planRepository.findByDemandIdOrderByCreatedAtDesc(demandId);
+
+        boolean hasActivePlan = existingPlans.stream()
+                .anyMatch(this::isActivePlan);
+
+        if (hasActivePlan) {
+            throw new IllegalStateException(
+                    "An active aggregation plan already exists for this demand");
         }
 
         List<Crop> candidates = cropRepository.findByCropTypeAndStatus(
@@ -55,7 +68,22 @@ public class AggregationMatchingService {
                 PageRequest.of(0, CANDIDATE_LIMIT)
         );
 
+        // Exclude crops already committed to another active plan.
+        Set<Long> unavailableCropIds = existingPlans.stream()
+                .filter(this::isActivePlan)
+                .flatMap(plan -> contributionRepository
+                        .findByPlanIdOrderByIdAsc(plan.getId()).stream())
+                .filter(contribution ->
+                        contribution.getStatus() == AggregationContributionStatus.PROPOSED
+                                || contribution.getStatus()
+                                == AggregationContributionStatus.ACCEPTED
+                                || contribution.getStatus()
+                                == AggregationContributionStatus.RESERVED)
+                .map(contribution -> contribution.getCrop().getId())
+                .collect(Collectors.toSet());
+
         List<Crop> matchingCrops = candidates.stream()
+                .filter(crop -> !unavailableCropIds.contains(crop.getId()))
                 .filter(crop -> crop.getCropName() != null
                         && crop.getCropName().trim()
                         .equalsIgnoreCase(demand.getCropName().trim()))
@@ -68,14 +96,15 @@ public class AggregationMatchingService {
                         || crop.getExpectedPrice().compareTo(
                         demand.getMaxPricePerKg()) <= 0)
                 .sorted(Comparator
-                        .comparingDouble((Crop crop) -> distanceFromDemand(crop, demand))
+                        .comparingDouble((Crop crop) ->
+                                distanceFromDemand(crop, demand))
                         .thenComparing(Crop::getId))
                 .toList();
 
         BigDecimal remainingKg = demand.getTargetQuantityKg();
         BigDecimal plannedKg = BigDecimal.ZERO;
-        BigDecimal estimatedTotalCost = BigDecimal.ZERO;
         BigDecimal estimatedDistanceSum = BigDecimal.ZERO;
+
         List<AggregationContribution> contributions = new ArrayList<>();
 
         for (Crop crop : matchingCrops) {
@@ -98,18 +127,11 @@ public class AggregationMatchingService {
                             .build();
 
             contributions.add(contribution);
-
             plannedKg = plannedKg.add(contributionKg);
             remainingKg = remainingKg.subtract(contributionKg);
 
-            /*
-             * NOTE:
-             * Crop.expectedPrice unit semantics must be confirmed before
-             * using it for reliable cost calculations or price filtering.
-             * This initial version records no invented monetary estimate.
-             */
             double distance = distanceFromDemand(crop, demand);
-            if (Double.isFinite(distance)) {
+            if (Double.isFinite(distance) && distance != Double.MAX_VALUE) {
                 estimatedDistanceSum = estimatedDistanceSum.add(
                         BigDecimal.valueOf(distance));
             }
@@ -123,7 +145,7 @@ public class AggregationMatchingService {
         AggregationPlan plan = AggregationPlan.builder()
                 .demand(demand)
                 .plannedQuantityKg(plannedKg)
-                .estimatedTotalCost(estimatedTotalCost)
+                .estimatedTotalCost(BigDecimal.ZERO)
                 .estimatedTransportCost(BigDecimal.ZERO)
                 .estimatedDistanceKm(
                         estimatedDistanceSum.setScale(2, RoundingMode.HALF_UP))
@@ -139,6 +161,21 @@ public class AggregationMatchingService {
         demand.setStatus(AggregationDemandStatus.PLAN_PROPOSED);
 
         return savedPlan;
+    }
+
+    private boolean isActivePlan(AggregationPlan plan) {
+        return switch (plan.getStatus()) {
+            case PROPOSED,
+                 BUYER_ACCEPTED,
+                 AWAITING_FARMER_APPROVALS,
+                 READY_TO_RESERVE,
+                 RESERVED,
+                 PARTIALLY_FULFILLED -> true;
+            case FULFILLED,
+                 REJECTED,
+                 CANCELLED,
+                 FAILED -> false;
+        };
     }
 
     private double distanceFromDemand(

@@ -1,3 +1,4 @@
+
 package com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.entity.Crop;
@@ -22,6 +23,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AggregationReservationService {
 
+    private static final BigDecimal KG_PER_QUINTAL = BigDecimal.valueOf(100);
+    private static final BigDecimal KG_PER_TON = BigDecimal.valueOf(1000);
+
     private final AggregationPlanRepository planRepository;
     private final AggregationContributionRepository contributionRepository;
     private final CropRepository cropRepository;
@@ -33,10 +37,10 @@ public class AggregationReservationService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("Aggregation plan not found"));
 
-        if (plan.getStatus() != AggregationPlanStatus.AWAITING_FARMER_APPROVALS
-                && plan.getStatus() != AggregationPlanStatus.READY_TO_RESERVE) {
+        // Reservation is allowed only after all farmer responses are received.
+        if (plan.getStatus() != AggregationPlanStatus.READY_TO_RESERVE) {
             throw new IllegalStateException(
-                    "Plan is not ready for reservation");
+                    "Plan can only be reserved after all farmer responses are received");
         }
 
         List<AggregationContribution> contributions =
@@ -55,6 +59,13 @@ public class AggregationReservationService {
         BigDecimal reservedTotalKg = BigDecimal.ZERO;
 
         for (AggregationContribution contribution : accepted) {
+            BigDecimal requestedKg = contribution.getProposedQuantityKg();
+
+            if (requestedKg == null || requestedKg.signum() <= 0) {
+                throw new IllegalStateException(
+                        "Contribution quantity must be greater than zero");
+            }
+
             Crop crop = cropRepository.findByIdForUpdate(
                             contribution.getCrop().getId())
                     .orElseThrow(() ->
@@ -69,13 +80,6 @@ public class AggregationReservationService {
             BigDecimal availableKg = quantityConverter.toKilograms(
                     crop.getQuantity(), crop.getUnit());
 
-            BigDecimal requestedKg = contribution.getProposedQuantityKg();
-
-            if (requestedKg == null || requestedKg.signum() <= 0) {
-                throw new IllegalStateException(
-                        "Contribution quantity must be greater than zero");
-            }
-
             // Never reserve more than the stock currently available.
             BigDecimal actualReservedKg = requestedKg.min(availableKg);
 
@@ -86,17 +90,32 @@ public class AggregationReservationService {
             }
 
             BigDecimal remainingKg = availableKg.subtract(actualReservedKg);
+
+            // Convert back without rounding remaining stock upward.
             BigDecimal remainingInOriginalUnit = switch (crop.getUnit()) {
-                case KG -> remainingKg;
+                case KG -> remainingKg.setScale(3, RoundingMode.DOWN);
                 case QUINTAL -> remainingKg.divide(
-                        BigDecimal.valueOf(100), 3, RoundingMode.HALF_UP);
+                        KG_PER_QUINTAL, 3, RoundingMode.DOWN);
                 case TON -> remainingKg.divide(
-                        BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP);
+                        KG_PER_TON, 3, RoundingMode.DOWN);
             };
+
+            // Do not silently discard stock that cannot be represented
+            // precisely in the crop's original unit.
+            BigDecimal representedRemainingKg = quantityConverter.toKilograms(
+                    remainingInOriginalUnit, crop.getUnit());
+
+            if (representedRemainingKg.compareTo(remainingKg) != 0) {
+                throw new IllegalStateException(
+                        "Reservation would lose stock precision for crop ID "
+                                + crop.getId()
+                                + ". Store crop quantities in kilograms or use "
+                                + "a more precise quantity representation.");
+            }
 
             crop.setQuantity(remainingInOriginalUnit);
 
-            if (remainingKg.signum() == 0) {
+            if (remainingInOriginalUnit.signum() == 0) {
                 crop.setStatus(CropStatus.RESERVED);
             }
 
@@ -106,16 +125,17 @@ public class AggregationReservationService {
             reservedTotalKg = reservedTotalKg.add(actualReservedKg);
         }
 
-        contributionRepository.saveAll(contributions);
-
         if (reservedTotalKg.signum() == 0) {
             throw new IllegalStateException(
-                    "No crop stock could be reserved; the plan remains unchanged");
+                    "No crop stock could be reserved; no reservation was made");
         }
+
+        contributionRepository.saveAll(contributions);
 
         plan.setPlannedQuantityKg(reservedTotalKg);
         plan.setStatus(
-                reservedTotalKg.compareTo(plan.getDemand().getTargetQuantityKg()) >= 0
+                reservedTotalKg.compareTo(
+                        plan.getDemand().getTargetQuantityKg()) >= 0
                         ? AggregationPlanStatus.RESERVED
                         : AggregationPlanStatus.PARTIALLY_FULFILLED
         );

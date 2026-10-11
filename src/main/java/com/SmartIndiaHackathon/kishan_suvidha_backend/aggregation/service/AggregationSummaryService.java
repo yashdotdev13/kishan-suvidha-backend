@@ -5,6 +5,7 @@ import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.entity.Aggrega
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.entity.AggregationDemand;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.entity.AggregationPlan;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.enums.AggregationContributionStatus;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.enums.AggregationPlanStatus;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.repository.AggregationContributionRepository;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.repository.AggregationDemandRepository;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.repository.AggregationPlanRepository;
@@ -40,27 +41,34 @@ public class AggregationSummaryService {
             List<AggregationContribution> contributions =
                     contributionRepository.findByPlanIdOrderByIdAsc(plan.getId());
 
+            BigDecimal planAccepted = BigDecimal.ZERO;
+            BigDecimal planReserved = BigDecimal.ZERO;
+
             for (AggregationContribution contribution : contributions) {
-                if (contribution.getStatus()
-                        == AggregationContributionStatus.ACCEPTED
-                        || contribution.getStatus()
-                        == AggregationContributionStatus.RESERVED
-                        || contribution.getStatus()
-                        == AggregationContributionStatus.FULFILLED) {
-                    acceptedTotal = acceptedTotal.add(
-                            contribution.getProposedQuantityKg());
+                AggregationContributionStatus status = contribution.getStatus();
+
+                if (status == AggregationContributionStatus.ACCEPTED
+                        || status == AggregationContributionStatus.RESERVED
+                        || status == AggregationContributionStatus.FULFILLED) {
+                    planAccepted = planAccepted.add(
+                            zeroIfNull(contribution.getProposedQuantityKg()));
                 }
 
-                if (contribution.getStatus()
-                        == AggregationContributionStatus.RESERVED
-                        || contribution.getStatus()
-                        == AggregationContributionStatus.FULFILLED) {
-                    reservedTotal = reservedTotal.add(
-                            contribution.getReservedQuantityKg());
+                if (status == AggregationContributionStatus.RESERVED
+                        || status == AggregationContributionStatus.FULFILLED) {
+                    planReserved = planReserved.add(
+                            zeroIfNull(contribution.getReservedQuantityKg()));
                 }
             }
 
-            plannedTotal = plannedTotal.add(plan.getPlannedQuantityKg());
+            // A cancelled, rejected, or failed plan must not inflate active
+            // planned quantities. Accepted/reserved totals come from contributions.
+            if (isActivePlan(plan)) {
+                plannedTotal = plannedTotal.add(
+                        zeroIfNull(plan.getPlannedQuantityKg()));
+                acceptedTotal = acceptedTotal.add(planAccepted);
+                reservedTotal = reservedTotal.add(planReserved);
+            }
         }
 
         BigDecimal remaining = demand.getTargetQuantityKg()
@@ -82,7 +90,7 @@ public class AggregationSummaryService {
                                                     == AggregationContributionStatus.RESERVED
                                                     || c.getStatus()
                                                     == AggregationContributionStatus.FULFILLED)
-                                    .map(AggregationContribution::getProposedQuantityKg)
+                                    .map(c -> zeroIfNull(c.getProposedQuantityKg()))
                                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                             BigDecimal reserved = contributions.stream()
@@ -91,13 +99,13 @@ public class AggregationSummaryService {
                                                     == AggregationContributionStatus.RESERVED
                                                     || c.getStatus()
                                                     == AggregationContributionStatus.FULFILLED)
-                                    .map(AggregationContribution::getReservedQuantityKg)
+                                    .map(c -> zeroIfNull(c.getReservedQuantityKg()))
                                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                             return new AggregationSummaryResponse.PlanSummary(
                                     plan.getId(),
                                     plan.getStatus(),
-                                    plan.getPlannedQuantityKg(),
+                                    zeroIfNull(plan.getPlannedQuantityKg()),
                                     accepted,
                                     reserved
                             );
@@ -115,5 +123,20 @@ public class AggregationSummaryService {
                 demand.getStatus(),
                 planSummaries
         );
+    }
+
+    private boolean isActivePlan(AggregationPlan plan) {
+        AggregationPlanStatus status = plan.getStatus();
+
+        return status == AggregationPlanStatus.PROPOSED
+                || status == AggregationPlanStatus.BUYER_ACCEPTED
+                || status == AggregationPlanStatus.AWAITING_FARMER_APPROVALS
+                || status == AggregationPlanStatus.READY_TO_RESERVE
+                || status == AggregationPlanStatus.RESERVED
+                || status == AggregationPlanStatus.PARTIALLY_FULFILLED;
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 }
