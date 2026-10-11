@@ -1,12 +1,11 @@
 package com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.controller;
 
+import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.dtos.AggregationSummaryResponse;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.entity.AggregationContribution;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.entity.AggregationPlan;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.repository.AggregationContributionRepository;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.repository.AggregationPlanRepository;
-import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service.AggregationDemandService;
-import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service.AggregationMatchingService;
-import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service.AggregationReservationService;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.aggregation.service.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +24,8 @@ public class AggregationPlanController {
     private final AggregationPlanRepository planRepository;
     private final AggregationContributionRepository contributionRepository;
     private final AggregationReservationService reservationService;
+    private final AggregationSummaryService aggregationSummaryService;
+    private final AggregationCancellationService cancellationService;
 
     @PostMapping("/demands/{demandId}/plans")
     @ResponseStatus(HttpStatus.CREATED)
@@ -102,4 +103,48 @@ public class AggregationPlanController {
 
         return reservationService.reserveAcceptedContributions(planId);
     }
+
+    @GetMapping("/demands/{demandId}/summary")
+    @PreAuthorize("hasRole('BUYER')")
+    public AggregationSummaryResponse getSummary(
+            @PathVariable Long demandId
+    ) {
+        Long buyerId = demandService.getAuthenticatedBuyerId();
+
+        var demand = demandService.getDemand(demandId);
+
+        if (!demand.getBuyer().getId().equals(buyerId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You cannot view another buyer's aggregation summary"
+            );
+        }
+
+        return aggregationSummaryService.getSummary(demandId);
+    }
+
+
+    @PostMapping("/plans/{planId}/cancel")
+    @PreAuthorize("hasRole('BUYER')")
+    public AggregationPlan cancelPlan(
+            @PathVariable Long planId
+    ) {
+        Long buyerId = demandService.getAuthenticatedBuyerId();
+
+        AggregationPlan plan = planRepository.findById(planId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Aggregation plan not found"
+                ));
+
+        if (!plan.getDemand().getBuyer().getId().equals(buyerId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You cannot cancel another buyer's plan"
+            );
+        }
+
+        return cancellationService.cancelPlan(planId);
+    }
+
 }
