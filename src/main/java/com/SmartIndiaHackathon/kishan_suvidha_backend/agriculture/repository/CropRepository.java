@@ -3,7 +3,9 @@ package com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.repository;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.entity.Crop;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.enums.CropStatus;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.agriculture.enums.CropType;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -38,4 +40,12 @@ public interface CropRepository extends JpaRepository<Crop, Long> {
         where c.id = :id
         """)
     Optional<Crop> findByIdForUpdate(@Param("id") Long id);
+
+
+    List<Crop> findByCropTypeAndStatus(
+            CropType cropType,
+            CropStatus status,
+            Pageable pageable
+    );
+
 }
