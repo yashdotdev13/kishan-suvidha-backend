@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface MandiPriceObservationRepository
         extends JpaRepository<MandiPriceObservation, Long> {
@@ -30,5 +31,12 @@ public interface MandiPriceObservationRepository
             String state,
             LocalDate from,
             LocalDate to
+    );
+
+    Optional<MandiPriceObservation>
+    findFirstByCropNameIgnoreCaseAndMarketNameIgnoreCaseAndStateIgnoreCaseOrderByObservationDateDescIdDesc(
+            String cropName,
+            String marketName,
+            String state
     );
 }
