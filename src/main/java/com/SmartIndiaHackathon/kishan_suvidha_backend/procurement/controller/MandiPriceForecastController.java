@@ -2,8 +2,10 @@ package com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.controller;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.MandiPriceBacktestResponse;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.MandiPriceForecastResponse;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.SaleTimingRecommendationResponse;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.service.MandiPriceBacktestService;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.service.MandiPriceForecastService;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.service.SaleTimingRecommendationService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -17,13 +19,16 @@ public class MandiPriceForecastController {
 
     private final MandiPriceForecastService forecastService;
     private final MandiPriceBacktestService backtestService;
+    private final SaleTimingRecommendationService saleTimingRecommendationService;
 
     public MandiPriceForecastController(
             MandiPriceForecastService forecastService,
-            MandiPriceBacktestService backtestService
+            MandiPriceBacktestService backtestService,
+            SaleTimingRecommendationService saleTimingRecommendationService
     ) {
         this.forecastService = forecastService;
         this.backtestService = backtestService;
+        this.saleTimingRecommendationService = saleTimingRecommendationService;
     }
 
     @GetMapping("/forecast")
@@ -57,6 +62,20 @@ public class MandiPriceForecastController {
                 state,
                 from,
                 to
+        );
+    }
+
+
+    @GetMapping("/sale-recommendation")
+    public SaleTimingRecommendationResponse recommendSaleTiming(
+            @RequestParam String cropName,
+            @RequestParam String marketName,
+            @RequestParam String state
+    ) {
+        return saleTimingRecommendationService.recommend(
+                cropName,
+                marketName,
+                state
         );
     }
 }
