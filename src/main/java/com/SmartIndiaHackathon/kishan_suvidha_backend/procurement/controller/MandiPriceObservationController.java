@@ -2,8 +2,10 @@ package com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.controller;
 
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.CreateMandiPriceObservationRequest;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.MandiPriceObservationResponse;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.dtos.MandiPriceTrendResponse;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.entity.MandiPriceObservation;
 import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.service.MandiPriceObservationService;
+import com.SmartIndiaHackathon.kishan_suvidha_backend.procurement.service.MandiPriceTrendService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -18,11 +20,13 @@ import java.util.List;
 public class MandiPriceObservationController {
 
     private final MandiPriceObservationService service;
+    private final MandiPriceTrendService trendService;
 
     public MandiPriceObservationController(
-            MandiPriceObservationService service
-    ) {
+            MandiPriceObservationService service,
+            MandiPriceTrendService trendService) {
         this.service = service;
+        this.trendService = trendService;
     }
 
     @PostMapping
@@ -72,5 +76,20 @@ public class MandiPriceObservationController {
                 .stream()
                 .map(MandiPriceObservationResponse::from)
                 .toList();
+    }
+
+
+    @GetMapping("/trend")
+    @PreAuthorize("hasAnyRole('FARMER', 'BUYER', 'OFFICER')")
+    public MandiPriceTrendResponse analyzeTrend(
+            @RequestParam String cropName,
+            @RequestParam String marketName,
+            @RequestParam String state) {
+
+        return trendService.analyzeTrend(
+                cropName,
+                marketName,
+                state
+        );
     }
 }
