@@ -39,4 +39,12 @@ public interface MandiPriceObservationRepository
             String marketName,
             String state
     );
+
+    List<MandiPriceObservation>
+    findByCropNameIgnoreCaseAndStateIgnoreCaseAndObservationDateBetweenOrderByObservationDateAscIdAsc(
+            String cropName,
+            String state,
+            LocalDate from,
+            LocalDate to
+    );
 }
