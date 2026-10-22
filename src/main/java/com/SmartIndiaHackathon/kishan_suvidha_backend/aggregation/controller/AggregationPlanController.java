@@ -32,16 +32,11 @@ public class AggregationPlanController {
     @PreAuthorize("hasRole('BUYER')")
     public AggregationPlan generatePlan(@PathVariable Long demandId) {
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
         var demand = demandService.getDemand(demandId);
-
         if (!demand.getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot generate a plan for another buyer's demand"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot generate a plan for another buyer's demand");
         }
-
         return matchingService.generatePlan(demandId);
     }
 
@@ -49,37 +44,25 @@ public class AggregationPlanController {
     @PreAuthorize("hasRole('BUYER')")
     public List<AggregationPlan> getPlans(@PathVariable Long demandId) {
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
         var demand = demandService.getDemand(demandId);
-
         if (!demand.getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot view another buyer's demand plans"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot view another buyer's demand plans");
         }
-
         return planRepository.findByDemandIdOrderByCreatedAtDesc(demandId);
     }
 
     @GetMapping("/plans/{planId}/contributions")
     @PreAuthorize("hasRole('BUYER')")
-    public List<AggregationContribution> getContributions(
-            @PathVariable Long planId
-    ) {
+    public List<AggregationContribution> getContributions(@PathVariable Long planId) {
         AggregationPlan plan = planRepository.findById(planId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Aggregation plan not found"));
-
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Aggregation plan not found"));
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
         if (!plan.getDemand().getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot view another buyer's plan contributions"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot view another buyer's plan contributions");
         }
-
         return contributionRepository.findByPlanIdOrderByIdAsc(planId);
     }
 
@@ -87,63 +70,37 @@ public class AggregationPlanController {
     @PreAuthorize("hasRole('BUYER')")
     public AggregationPlan reservePlan(@PathVariable Long planId) {
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
-        AggregationPlan plan = planRepository.findById(planId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Aggregation plan not found"
-                ));
-
+        AggregationPlan plan = planRepository.findById(planId).orElseThrow(()
+                -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Aggregation plan not found"));
         if (!plan.getDemand().getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot reserve another buyer's plan"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot reserve another buyer's plan");
         }
-
         return reservationService.reserveAcceptedContributions(planId);
     }
 
     @GetMapping("/demands/{demandId}/summary")
     @PreAuthorize("hasRole('BUYER')")
-    public AggregationSummaryResponse getSummary(
-            @PathVariable Long demandId
-    ) {
+    public AggregationSummaryResponse getSummary(@PathVariable Long demandId) {
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
         var demand = demandService.getDemand(demandId);
-
         if (!demand.getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot view another buyer's aggregation summary"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot view another buyer's aggregation summary");
         }
-
         return aggregationSummaryService.getSummary(demandId);
     }
 
 
     @PostMapping("/plans/{planId}/cancel")
     @PreAuthorize("hasRole('BUYER')")
-    public AggregationPlan cancelPlan(
-            @PathVariable Long planId
-    ) {
+    public AggregationPlan cancelPlan(@PathVariable Long planId) {
         Long buyerId = demandService.getAuthenticatedBuyerId();
-
-        AggregationPlan plan = planRepository.findById(planId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Aggregation plan not found"
-                ));
-
+        AggregationPlan plan = planRepository.findById(planId).orElseThrow(()
+                -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Aggregation plan not found"));
         if (!plan.getDemand().getBuyer().getId().equals(buyerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You cannot cancel another buyer's plan"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot cancel another buyer's plan");
         }
-
         return cancellationService.cancelPlan(planId);
     }
 
